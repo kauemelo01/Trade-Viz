@@ -1,94 +1,33 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import subprocess
-import tempfile
-import shutil
-import os
-from contextlib import contextmanager
+import paramiko
+import io
 
 st.set_page_config(page_title="Trading Log Dashboard", layout="wide")
 st.title("📈 Trading Log Dashboard")
 
-# ── SSH key from secrets ───────────────────────────────────────────────────────
-# Expects .streamlit/secrets.toml to contain:
-#
-#   [github]
-#   ssh_key  = """
-#   -----BEGIN OPENSSH PRIVATE KEY-----
-#   ...
-#   -----END OPENSSH PRIVATE KEY-----
-#   """
-#   owner    = "your-username"
-#   repo     = "your-repo"
-#   branch   = "main"
-#   filepath = "log.csv"
+# ── Load CSV from Oracle server via SSH ────────────────────────────────────────
+@st.cache_data(show_spinner="Connecting via SSH…")
+def load_data():
+    key_content = st.secrets["ssh"]["rsa_key"]
+    host        = st.secrets["ssh"]["host"]       # 138.2.225.70
+    user        = st.secrets["ssh"]["user"]       # ubuntu
+    remote_path = st.secrets["ssh"]["csv_path"]   # /home/ubuntu/app/log.csv
 
-@contextmanager
-def temp_ssh_key(key_content: str):
-    """Write the key to a secure temp file, yield its path, then delete it."""
-    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".key", delete=False)
-    try:
-        tmp.write(key_content)
-        tmp.flush()
-        tmp.close()
-        os.chmod(tmp.name, 0o600)   # SSH refuses keys that are world-readable
-        yield tmp.name
-    finally:
-        os.unlink(tmp.name)
+    pkey = paramiko.RSAKey.from_private_key(io.StringIO(key_content))
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.header("🔌 GitHub Source")
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(host, username=user, pkey=pkey)
 
-    # Pre-fill from secrets if available, allow override in the UI
-    cfg = st.secrets.get("github", {})
-    owner    = st.text_input("Owner (user or org)", cfg.get("owner", ""))
-    repo     = st.text_input("Repository",          cfg.get("repo", ""))
-    branch   = st.text_input("Branch",              cfg.get("branch", "main"))
-    filepath = st.text_input("File path in repo",   cfg.get("filepath", "log.csv"))
-    load_btn = st.button("⬇️ Load from GitHub", use_container_width=True)
-    st.divider()
-    st.caption("Or upload a local file:")
-    uploaded = st.file_uploader("Upload log.csv", type="csv")
+    sftp = ssh.open_sftp()
+    with sftp.open(remote_path, "r") as f:
+        content = f.read()
+    sftp.close()
+    ssh.close()
 
-# ── Data loading ───────────────────────────────────────────────────────────────
-@st.cache_data(show_spinner="Cloning via SSH…")
-def load_from_github(owner, repo, branch, filepath):
-    key_content = st.secrets["github"]["ssh_key"]
-
-    with temp_ssh_key(key_content) as key_path:
-        tmp_dir = tempfile.mkdtemp()
-        try:
-            env = {
-                **os.environ,
-                "GIT_SSH_COMMAND": (
-                    f"ssh -i {key_path} "
-                    "-o StrictHostKeyChecking=no "
-                    "-o BatchMode=yes"
-                ),
-            }
-            subprocess.run(
-                [
-                    "git", "clone",
-                    "--depth=1",
-                    "--branch", branch,
-                    "--filter=blob:none",
-                    "--sparse",
-                    f"git@github.com:{owner}/{repo}.git",
-                    tmp_dir,
-                ],
-                env=env, check=True, capture_output=True, text=True,
-            )
-            subprocess.run(
-                ["git", "sparse-checkout", "set", filepath],
-                cwd=tmp_dir, env=env, check=True, capture_output=True, text=True,
-            )
-            return pd.read_csv(os.path.join(tmp_dir, filepath))
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(e.stderr or e.stdout or str(e))
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+    return pd.read_csv(io.BytesIO(content))
 
 def parse(df):
     df["timestamp"] = pd.to_datetime(
@@ -100,23 +39,16 @@ def parse(df):
     )
     return df
 
-df = None
-
-if load_btn:
-    try:
-        df = parse(load_from_github(owner, repo, branch, filepath))
-        st.sidebar.success("Loaded from GitHub ✓")
-    except KeyError:
-        st.sidebar.error("No SSH key found. Add [github] ssh_key to your secrets.toml.")
-    except Exception as e:
-        st.sidebar.error(f"Error: {e}")
-
-if uploaded is not None:
-    df = parse(pd.read_csv(uploaded))
-
-if df is None:
-    st.info("Connect to GitHub or upload a local `log.csv` to get started.")
+# ── Fetch ──────────────────────────────────────────────────────────────────────
+try:
+    df = parse(load_data())
+except Exception as e:
+    st.error(f"Could not load data: {e}")
     st.stop()
+
+if st.button("🔄 Refresh"):
+    st.cache_data.clear()
+    st.rerun()
 
 # ── Metrics ────────────────────────────────────────────────────────────────────
 profit_df = df.dropna(subset=["profit", "timestamp"]).sort_values("timestamp").copy()
