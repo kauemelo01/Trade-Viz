@@ -130,6 +130,7 @@ else:
             "Wire→Confirm: %{customdata[1]:.1f} ms"
             "<extra></extra>"
         ),
+        yaxis="y2",
     ))
 
     fig.update_layout(
@@ -138,7 +139,16 @@ else:
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         xaxis=dict(showgrid=False, title="Time"),
-        yaxis=dict(showgrid=True, gridcolor="#333", title="Profit (USD)"),
+        yaxis=dict(
+            showgrid=True, gridcolor="#333",
+            title="Trade P&L (USD)",
+        ),
+        yaxis2=dict(
+            title="Cumulative P&L (USD)",
+            overlaying="y",
+            side="right",
+            showgrid=False,
+        ),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         hovermode="x unified",
         barmode="overlay",
