@@ -121,7 +121,7 @@ else:
         y=filtered["cumulative"],
         name="Cumulative P&L",
         mode="lines",
-        line=dict(color="#ffffff", width=2.5),
+        line=dict(color="#f5a623", width=2.5),
         customdata=filtered[["signal_to_wire_ms", "wire_to_confirm_ms"]].values,
         hovertemplate=(
             "<b>%{x}</b><br>"
