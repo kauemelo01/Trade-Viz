@@ -15,7 +15,9 @@ def load_data():
     user        = st.secrets["ssh"]["user"]
     remote_path = st.secrets["ssh"]["csv_path"]
 
-    pkey = paramiko.RSAKey.from_private_key(io.StringIO(key_content))
+    # Changed from RSAKey to Ed25519Key to match your modern id_ed25519 structure
+    pkey = paramiko.Ed25519Key.from_private_key(io.StringIO(key_content))
+
     ssh  = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(host, username=user, pkey=pkey)
