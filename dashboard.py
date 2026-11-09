@@ -8,7 +8,7 @@ st.set_page_config(page_title="Trading Log Dashboard", layout="wide")
 st.title("📈 Trading Log Dashboard")
 
 # ── Load CSV from Oracle server via SSH ────────────────────────────────────────
-@st.cache_data(show_spinner="Connecting via SSH…")
+@st.cache_data(ttl=30, show_spinner="Connecting via SSH…")
 def load_data():
     key_content = st.secrets["ssh"]["rsa_key"]
     host        = st.secrets["ssh"]["host"]
@@ -56,31 +56,50 @@ if st.button("🔄 Refresh"):
 # ── Time range filter ──────────────────────────────────────────────────────────
 profit_df = df.dropna(subset=["profit", "timestamp"]).sort_values("timestamp").copy()
 
-t_min = profit_df["timestamp"].min()
-t_max = profit_df["timestamp"].max()
+# Bounds come from every timestamped row (not just trades), so the newest
+# event-log entries are covered as well.
+all_ts = df["timestamp"].dropna()
+if all_ts.empty:
+    st.warning("No valid timestamps found in the source.")
+    st.stop()
+
+t_min = all_ts.min()
+t_max = all_ts.max()
 
 st.subheader("⏱ Time Range")
 
-col_from, col_to = st.columns(2)
+# Default: show the entire source, with no filtering at all.
+show_all = st.checkbox("Show entire source (all available data)", value=True)
 
-with col_from:
-    date_from = st.date_input("From date", value=t_min.date(), min_value=t_min.date(), max_value=t_max.date())
-    time_from = st.time_input("From time", value=t_min.time())
+if show_all:
+    filtered = profit_df.copy()
+    log_src  = df
+else:
+    col_from, col_to = st.columns(2)
 
-with col_to:
-    date_to = st.date_input("To date", value=t_max.date(), min_value=t_min.date(), max_value=t_max.date())
-    time_to = st.time_input("To time", value=t_max.time())
+    with col_from:
+        date_from = st.date_input("From date", value=t_min.date(), min_value=t_min.date(), max_value=t_max.date())
+        time_from = st.time_input("From time", value=t_min.time())
 
-ts_from = pd.Timestamp.combine(date_from, time_from)
-ts_to   = pd.Timestamp.combine(date_to,   time_to)
+    with col_to:
+        date_to = st.date_input("To date", value=t_max.date(), min_value=t_min.date(), max_value=t_max.date())
+        time_to = st.time_input("To time", value=t_max.time())
 
-if ts_from >= ts_to:
-    st.warning("'From' must be earlier than 'To'.")
-    st.stop()
+    # st.time_input works at minute resolution (seconds are dropped), so treat
+    # "To" as the END of the selected minute; otherwise records in the last
+    # partial minute get cut off.
+    ts_from = pd.Timestamp.combine(date_from, time_from)
+    ts_to   = pd.Timestamp.combine(date_to, time_to) + pd.Timedelta(minutes=1) - pd.Timedelta(microseconds=1)
 
-# Apply filter — cumulative restarts from zero within the selected window
-mask      = (profit_df["timestamp"] >= ts_from) & (profit_df["timestamp"] <= ts_to)
-filtered  = profit_df[mask].copy()
+    if ts_from >= ts_to:
+        st.warning("'From' must be earlier than 'To'.")
+        st.stop()
+
+    # Cumulative restarts from zero within the selected window
+    mask     = (profit_df["timestamp"] >= ts_from) & (profit_df["timestamp"] <= ts_to)
+    filtered = profit_df[mask].copy()
+    log_src  = df[(df["timestamp"] >= ts_from) & (df["timestamp"] <= ts_to)]
+
 filtered["cumulative"] = filtered["profit"].cumsum()
 
 # ── Metrics ────────────────────────────────────────────────────────────────────
@@ -164,14 +183,10 @@ else:
 st.subheader("📋 Event Log")
 
 log_df = (
-    df[["timestamp", "event", "detail"]]
+    log_src[["timestamp", "event", "detail"]]
     .dropna(subset=["detail"])
     .copy()
 )
-# Also filter the event log to the selected window
-log_df = log_df[
-    (log_df["timestamp"] >= ts_from) & (log_df["timestamp"] <= ts_to)
-]
 log_df["timestamp"] = log_df["timestamp"].astype(str)
 
 st.dataframe(
