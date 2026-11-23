@@ -37,7 +37,11 @@
     #ios-help.show { display: block; }
     #ios-help ol { margin: .3rem 0 0; padding-left: 1.2rem; }
 
-    iframe { flex: 1; width: 100%; border: 0; display: block; background: transparent; }
+    /* The app is drawn at a desktop width and scaled down to fit (see the script),
+       so phones get the desktop layout instead of Streamlit's stacked mobile one. */
+    #frame { flex: 1; position: relative; overflow: hidden; }
+    iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;
+             display: block; background: transparent; transform-origin: 0 0; }
 
     /* Same background as Streamlit's dark theme, so no white edge shows around the app. */
     @media (prefers-color-scheme: dark) {
@@ -60,10 +64,34 @@
     </ol>
   </div>
 
-  <iframe src="https://trade-viz-deriv-rd.streamlit.app/~/+/?embed=true"
-          title="Trade-Viz" allow="clipboard-write"></iframe>
+  <div id="frame">
+    <iframe src="https://trade-viz-deriv-rd.streamlit.app/~/+/?embed=true"
+            title="Trade-Viz" allow="clipboard-write"></iframe>
+  </div>
 
   <script>
+    // Desktop version by default: on screens narrower than DESKTOP_WIDTH, lay the app
+    // out at DESKTOP_WIDTH and scale it down to fit. Wider screens are left as they are.
+    (function () {
+      var DESKTOP_WIDTH = 1024;
+      var frame = document.getElementById("frame");
+      var iframe = frame.querySelector("iframe");
+      function fit() {
+        var w = frame.clientWidth, h = frame.clientHeight;
+        if (w >= DESKTOP_WIDTH) {
+          iframe.style.width = iframe.style.height = iframe.style.transform = "";
+          return;
+        }
+        var s = w / DESKTOP_WIDTH;
+        iframe.style.width = DESKTOP_WIDTH + "px";
+        iframe.style.height = (h / s) + "px";
+        iframe.style.transform = "scale(" + s + ")";
+      }
+      fit();
+      window.addEventListener("resize", fit);
+      if (window.ResizeObserver) new ResizeObserver(fit).observe(frame);
+    })();
+
     (function () {
       var bar = document.getElementById("install-bar");
       var btn = document.getElementById("install-btn");

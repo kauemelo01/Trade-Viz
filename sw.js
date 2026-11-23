@@ -1,7 +1,7 @@
 // Service worker of the wrapper. It only caches the wrapper's own files (the
 // app itself runs in the iframe, on streamlit.app, and is never cached here).
 // Bump VERSION whenever any of the files below change.
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL = ["./", "index.html", "manifest.json",
                "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 

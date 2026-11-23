@@ -22,7 +22,7 @@ the app full-screen inside an `<iframe>`.
 
 | File | Purpose |
 |---|---|
-| `index.html` | The page: install bar on top, the app in a full-screen `<iframe>` below |
+| `index.html` | The page: install bar on top, the app in a full-screen `<iframe>` below, scaled to a desktop width on phones |
 | `manifest.json` | App name, icons, colours, `"display": "fullscreen"` |
 | `sw.js` | Service worker: makes the site installable and caches the wrapper's own files (never the app) |
 | `icon-192.png`, `icon-512.png` | Android icons (`icon-512.png` is also the maskable icon) |
@@ -46,6 +46,12 @@ Tapping **✕** hides the bar for good on that device (stored in `localStorage`)
 - **Android:** the installed app opens full screen, with the status bar hidden. It follows the
   phone's rotation, so you can turn it sideways for a wider chart.
 - **iPhone:** opens as a normal app window. Safari ignores full-screen mode.
+
+**Desktop version by default:** on screens narrower than 1024 px (phones, small
+tablets) the app is laid out at 1024 px wide and scaled down to fit, so it shows the
+desktop layout (KPIs side by side, full-width chart) instead of Streamlit's stacked mobile
+layout. Pinch to zoom in. Change `DESKTOP_WIDTH` in `index.html` to adjust; wider screens
+are unaffected.
 
 **Light / dark mode:** the page background follows the phone's setting: white, or
 `#0e1117` (Streamlit's dark background) so no frame shows around the app. The splash
