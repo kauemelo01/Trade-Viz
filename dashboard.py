@@ -185,6 +185,7 @@ st.subheader("📋 Event Log")
 log_df = (
     log_src[["timestamp", "event", "detail"]]
     .dropna(subset=["detail"])
+    .sort_values("timestamp", ascending=False, kind="stable")
     .copy()
 )
 log_df["timestamp"] = log_df["timestamp"].astype(str)
